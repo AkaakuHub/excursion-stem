@@ -1,7 +1,8 @@
-flask
-demucs
-numpy
-scipy
-pydub
-requests
-flask-cors
+flask=3.1.0
+flask-cors=5.0.1
+demucs=4.0.1
+numpy=1.23.5
+scipy=1.9.3
+pydub=0.25.1
+requests=2.28.1
+soundfile=0.11.0
