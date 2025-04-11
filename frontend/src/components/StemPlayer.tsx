@@ -144,7 +144,7 @@ export default function StemPlayer({
 
 	// 再生位置を変更
 	const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const newTime = parseFloat(e.target.value);
+		const newTime = Number.parseFloat(e.target.value);
 		setTrackProgress(newTime);
 
 		// すべてのオーディオ要素の再生位置を変更
@@ -305,11 +305,13 @@ export default function StemPlayer({
 					<button
 						key={track.name}
 						onClick={() => toggleTrack(track.name)}
-						className={`py-3 px-4 rounded-lg text-white font-medium transition-all flex items-center justify-center ${
-							activeTrackIds.includes(track.name)
-								? `${track.color} shadow-md`
-								: "bg-gray-300 hover:bg-gray-400"
-						}`}
+						className={`py-3 px-4 rounded-lg text-white font-medium transition-all flex items-center justify-center disabled:brightness-75 cursor-pointer disabled:cursor-not-allowed
+							${
+								activeTrackIds.includes(track.name)
+									? `${track.color} shadow-md`
+									: "bg-gray-300 hover:bg-gray-400"
+							}`}
+						disabled={isPlaying}
 					>
 						{activeTrackIds.includes(track.name) ? (
 							<svg
