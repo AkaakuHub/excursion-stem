@@ -13,7 +13,7 @@ def get_audio_preview(audio, start_time, end_time, sr):
 
 def split_audio_by_instrument(audio, sr, model):
     # Placeholder for the actual Demucs model processing
-    # This function should call the Demucs model to separate the audio into different instruments
+    # This function should call the DFemucs model to separate the audio into different instruments
     # For now, we will just return the original audio as a mockup
     return {
         'vocals': audio,
