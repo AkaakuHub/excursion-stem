@@ -24,6 +24,8 @@ export default function AudioRangeSelector({
 	const audioRef = useRef<HTMLAudioElement>(null);
 	const previewAudioRef = useRef<HTMLAudioElement>(null);
 
+	const currentTimeRef = useRef(0);
+
 	useEffect(() => {
 		const audio = audioRef.current;
 		if (!audio) return;
@@ -35,7 +37,11 @@ export default function AudioRangeSelector({
 		};
 
 		const handleTimeUpdate = () => {
+			// まずrefを更新
+			currentTimeRef.current = audio.currentTime;
+			// 次にstate更新（これはeffectを再トリガーしない）
 			setCurrentTime(audio.currentTime);
+
 			// 選択範囲外に行ったら一時停止
 			if (audio.currentTime >= rangeEnd) {
 				audio.pause();
@@ -73,7 +79,7 @@ export default function AudioRangeSelector({
 	useEffect(() => {
 		// 範囲が変更されたらコールバックを呼び出す
 		onRangeChange({ start: rangeStart, end: rangeEnd });
-	}, [rangeStart, rangeEnd, onRangeChange]);
+	}, [rangeStart, rangeEnd]);
 
 	const formatTime = (time: number) => {
 		const minutes = Math.floor(time / 60);
