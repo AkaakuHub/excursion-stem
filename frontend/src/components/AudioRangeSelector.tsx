@@ -3,15 +3,26 @@ import React, { useState, useEffect, useRef } from 'react';
 type AudioRangeSelectorProps = {
   audioUrl: string;
   onRangeChange: (range: { start: number; end: number }) => void;
+  previewUrl?: string | null;
+  onPreviewRequest?: () => Promise<void>;
+  isProcessing?: boolean;
 };
 
-export default function AudioRangeSelector({ audioUrl, onRangeChange }: AudioRangeSelectorProps) {
+export default function AudioRangeSelector({ 
+  audioUrl, 
+  onRangeChange, 
+  previewUrl,
+  onPreviewRequest,
+  isProcessing = false
+}: AudioRangeSelectorProps) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeEnd, setRangeEnd] = useState(30);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const previewAudioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -42,6 +53,23 @@ export default function AudioRangeSelector({ audioUrl, onRangeChange }: AudioRan
     };
   }, [rangeEnd, rangeStart]);
 
+  // プレビューオーディオの設定
+  useEffect(() => {
+    const previewAudio = previewAudioRef.current;
+    if (!previewAudio) return;
+
+    const handlePreviewEnded = () => {
+      setIsPlaying(false);
+      setIsPreviewMode(false);
+    };
+
+    previewAudio.addEventListener('ended', handlePreviewEnded);
+    
+    return () => {
+      previewAudio.removeEventListener('ended', handlePreviewEnded);
+    };
+  }, [previewUrl]);
+
   useEffect(() => {
     // 範囲が変更されたらコールバックを呼び出す
     onRangeChange({ start: rangeStart, end: rangeEnd });
@@ -57,6 +85,17 @@ export default function AudioRangeSelector({ audioUrl, onRangeChange }: AudioRan
     const audio = audioRef.current;
     if (!audio) return;
 
+    // プレビューモードの場合はプレビューオーディオを操作
+    if (isPreviewMode && previewUrl && previewAudioRef.current) {
+      if (isPlaying) {
+        previewAudioRef.current.pause();
+      } else {
+        previewAudioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+      return;
+    }
+
     if (isPlaying) {
       audio.pause();
     } else {
@@ -67,13 +106,34 @@ export default function AudioRangeSelector({ audioUrl, onRangeChange }: AudioRan
     setIsPlaying(!isPlaying);
   };
 
-  const handleRangePreview = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    
-    audio.currentTime = rangeStart;
-    audio.play();
-    setIsPlaying(true);
+  const handleRangePreview = async () => {
+    if (previewUrl && previewAudioRef.current) {
+      // 既存のプレビューを再生
+      setIsPreviewMode(true);
+      previewAudioRef.current.currentTime = 0;
+      previewAudioRef.current.play();
+      setIsPlaying(true);
+    } else if (onPreviewRequest) {
+      // 新しいプレビューをリクエスト
+      await onPreviewRequest();
+      setIsPreviewMode(true);
+      // プレビューが読み込まれたら自動的に再生
+      if (previewAudioRef.current) {
+        previewAudioRef.current.play().then(() => {
+          setIsPlaying(true);
+        }).catch(err => {
+          console.error("プレビュー再生エラー:", err);
+        });
+      }
+    } else {
+      // プレビュー機能がない場合は通常の範囲再生
+      const audio = audioRef.current;
+      if (!audio) return;
+      
+      audio.currentTime = rangeStart;
+      audio.play();
+      setIsPlaying(true);
+    }
   };
 
   const handleRangeStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,7 +141,7 @@ export default function AudioRangeSelector({ audioUrl, onRangeChange }: AudioRan
     // 開始時間は終了時間より前に
     if (newStart < rangeEnd - 5) {
       setRangeStart(newStart);
-      if (audioRef.current && isPlaying) {
+      if (audioRef.current && isPlaying && !isPreviewMode) {
         audioRef.current.currentTime = newStart;
       }
     }
@@ -99,13 +159,20 @@ export default function AudioRangeSelector({ audioUrl, onRangeChange }: AudioRan
     <div className="audio-range-selector bg-white p-6 rounded-xl shadow-md">
       <h2 className="text-xl font-semibold mb-4">範囲選択</h2>
       
+      {/* 元の音声 */}
       <audio ref={audioRef} src={audioUrl} preload="metadata" />
+      
+      {/* プレビュー用音声 */}
+      {previewUrl && (
+        <audio ref={previewAudioRef} src={previewUrl} preload="auto" />
+      )}
       
       {/* 再生コントロール */}
       <div className="flex items-center mb-6 space-x-4">
         <button 
           onClick={handlePlayPause}
-          className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-full transition-colors flex items-center shadow-md"
+          disabled={isProcessing}
+          className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-full transition-colors flex items-center shadow-md disabled:opacity-50"
         >
           {isPlaying ? (
             <>
@@ -127,16 +194,28 @@ export default function AudioRangeSelector({ audioUrl, onRangeChange }: AudioRan
         
         <button 
           onClick={handleRangePreview}
-          className="bg-indigo-500 hover:bg-indigo-600 text-white py-2 px-4 rounded-full transition-colors flex items-center shadow-md"
+          disabled={isProcessing}
+          className="bg-indigo-500 hover:bg-indigo-600 text-white py-2 px-4 rounded-full transition-colors flex items-center shadow-md disabled:opacity-50"
         >
-          <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-          選択範囲をプレビュー
+          {isProcessing ? (
+            <>
+              <svg className="w-5 h-5 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              処理中...
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              選択範囲をプレビュー
+            </>
+          )}
         </button>
         
         <div className="text-gray-700">
-          現在位置: {formatTime(currentTime)}
+          {isPreviewMode ? '選択範囲プレビュー中' : `現在位置: ${formatTime(currentTime)}`}
         </div>
       </div>
       

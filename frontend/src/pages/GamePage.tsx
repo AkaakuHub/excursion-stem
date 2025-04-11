@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import AudioUploader from "../components/AudioUploader";
 import AudioRangeSelector from "../components/AudioRangeSelector";
 import StemPlayer from "../components/StemPlayer";
-import { processAudio } from "../services/audioService";
+import { processAudio, getAudioPreview } from "../services/audioService";
 
 export default function GamePage() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState({ start: 0, end: 30 });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [stems, setStems] = useState<Record<string, string> | null>(null);
   const [gameStatus, setGameStatus] = useState<'upload' | 'select' | 'process' | 'play'>('upload');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // ファイルがアップロードされたら
   const handleFileUpload = (file: File) => {
@@ -18,11 +20,39 @@ export default function GamePage() {
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
     setGameStatus('select');
+    
+    // エラーをリセット
+    setError(null);
   };
 
   // 範囲が変更されたら
   const handleRangeChange = (range: { start: number; end: number }) => {
     setSelectedRange(range);
+  };
+
+  // 範囲プレビューのリクエスト
+  const handlePreviewRequest = async () => {
+    if (!audioFile) return;
+    
+    try {
+      setIsProcessing(true);
+      const previewUrlPath = await getAudioPreview(audioFile, selectedRange.start, selectedRange.end);
+      
+      // バックエンドからのURLをフルURLに変換
+      const baseUrl = window.location.origin;
+      const fullUrl = `${baseUrl}${previewUrlPath}`;
+      
+      setPreviewUrl(fullUrl);
+    } catch (error) {
+      console.error("プレビュー生成エラー:", error);
+      if (error instanceof Error) {
+        setError(`プレビューの生成に失敗しました: ${error.message}`);
+      } else {
+        setError("プレビューの生成に失敗しました");
+      }
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // 音声を処理
@@ -32,6 +62,7 @@ export default function GamePage() {
     try {
       setIsProcessing(true);
       setGameStatus('process');
+      setError(null);
       
       // 音声を処理してパート分けする
       const result = await processAudio(audioFile, selectedRange.start, selectedRange.end);
@@ -41,7 +72,11 @@ export default function GamePage() {
       setGameStatus('play');
     } catch (error) {
       console.error("音声処理エラー:", error);
-      alert("音声の処理中にエラーが発生しました。別の音声ファイルを試してください。");
+      if (error instanceof Error) {
+        setError(`音声の処理中にエラーが発生しました: ${error.message}`);
+      } else {
+        setError("音声の処理中にエラーが発生しました。別の音声ファイルを試してください。");
+      }
       setGameStatus('select');
     } finally {
       setIsProcessing(false);
@@ -54,18 +89,33 @@ export default function GamePage() {
         音楽パート分けゲーム
       </h1>
       
+      {/* エラー表示 */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <strong className="font-bold">エラー: </strong>
+          <span className="block sm:inline">{error}</span>
+        </div>
+      )}
+      
       {gameStatus === 'upload' && (
         <AudioUploader onFileUpload={handleFileUpload} />
       )}
       
       {gameStatus === 'select' && audioUrl && (
         <div className="space-y-8">
-          <AudioRangeSelector audioUrl={audioUrl} onRangeChange={handleRangeChange} />
+          <AudioRangeSelector 
+            audioUrl={audioUrl} 
+            onRangeChange={handleRangeChange}
+            previewUrl={previewUrl}
+            onPreviewRequest={handlePreviewRequest}
+            isProcessing={isProcessing}
+          />
           
           <div className="text-center">
             <button
               onClick={handleProcessAudio}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-8 rounded-lg shadow-lg text-xl transition-colors"
+              disabled={isProcessing}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-8 rounded-lg shadow-lg text-xl transition-colors disabled:opacity-50"
             >
               この範囲で音声を処理する
             </button>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { getFullTrackUrls } from '../services/audioService';
 
 type Track = {
   name: string;
@@ -15,37 +16,119 @@ type StemPlayerProps = {
 export default function StemPlayer({ tracks, defaultActiveTrack = ['drums'] }: StemPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeTrackIds, setActiveTrackIds] = useState<string[]>(defaultActiveTrack);
+  const [trackProgress, setTrackProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+  const animationRef = useRef<number | null>(null);
+  
+  // 相対URLを絶対URLに変換
+  const fullUrlTracks = getFullTrackUrls(tracks);
 
   // 表示用のトラック情報
   const trackData: Track[] = [
-    { name: 'drums', url: tracks.drums || '', label: 'ドラム', color: 'bg-red-500' },
-    { name: 'bass', url: tracks.bass || '', label: 'ベース', color: 'bg-blue-500' },
-    { name: 'vocals', url: tracks.vocals || '', label: 'ボーカル', color: 'bg-green-500' },
-    { name: 'other', url: tracks.other || '', label: 'その他の楽器', color: 'bg-purple-500' }
+    { name: 'drums', url: fullUrlTracks.drums || '', label: 'ドラム', color: 'bg-red-500' },
+    { name: 'bass', url: fullUrlTracks.bass || '', label: 'ベース', color: 'bg-blue-500' },
+    { name: 'vocals', url: fullUrlTracks.vocals || '', label: 'ボーカル', color: 'bg-green-500' },
+    { name: 'other', url: fullUrlTracks.other || '', label: 'その他の楽器', color: 'bg-purple-500' }
   ].filter(track => track.url);
 
+  // トラックのロード時にデュレーションを設定
   useEffect(() => {
-    // オーディオ要素の同期
+    const handleLoadedMetadata = (e: Event) => {
+      const audio = e.target as HTMLAudioElement;
+      if (audio && audio.duration) {
+        setDuration(audio.duration);
+      }
+    };
+    
+    // 各オーディオ要素にメタデータロードイベントを設定
+    Object.values(audioRefs.current).forEach(audio => {
+      if (audio) {
+        audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+      }
+    });
+    
+    return () => {
+      // クリーンアップ
+      Object.values(audioRefs.current).forEach(audio => {
+        if (audio) {
+          audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        }
+      });
+    };
+  }, [tracks]);
+
+  // 再生状態の変更を監視
+  useEffect(() => {
     const audios = Object.values(audioRefs.current).filter(Boolean) as HTMLAudioElement[];
     
     if (isPlaying) {
-      // すべてのトラックを同時に再生
-      const playPromises = audios
-        .filter(audio => activeTrackIds.includes(audio.dataset.trackId || ''))
-        .map(audio => audio.play());
+      // アクティブなトラックのみ再生
+      audios.forEach(audio => {
+        if (activeTrackIds.includes(audio.dataset.trackId || '')) {
+          audio.play().catch(err => console.error('再生エラー:', err));
+        } else {
+          audio.pause();
+        }
+      });
       
-      Promise.all(playPromises).catch(err => console.error('再生エラー:', err));
+      // プログレスバーのアニメーション開始
+      startProgressAnimation();
     } else {
       // すべてのトラックを一時停止
       audios.forEach(audio => audio.pause());
+      
+      // アニメーション停止
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
     }
   }, [isPlaying, activeTrackIds]);
 
+  // プログレスバーアニメーション
+  const startProgressAnimation = () => {
+    const updateProgress = () => {
+      // 最初のアクティブなオーディオ要素を取得
+      const firstActiveAudio = Object.values(audioRefs.current).find(
+        audio => audio && activeTrackIds.includes(audio.dataset.trackId || '')
+      ) as HTMLAudioElement | undefined;
+      
+      if (firstActiveAudio) {
+        setTrackProgress(firstActiveAudio.currentTime);
+        
+        // 再生が終了したらアニメーションを停止
+        if (firstActiveAudio.currentTime >= firstActiveAudio.duration) {
+          setIsPlaying(false);
+          setTrackProgress(0);
+          return;
+        }
+      }
+      
+      animationRef.current = requestAnimationFrame(updateProgress);
+    };
+    
+    animationRef.current = requestAnimationFrame(updateProgress);
+  };
+
+  // 再生/一時停止の切り替え
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
   };
 
+  // 再生位置を変更
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    setTrackProgress(newTime);
+    
+    // すべてのオーディオ要素の再生位置を変更
+    Object.values(audioRefs.current).forEach(audio => {
+      if (audio) {
+        audio.currentTime = newTime;
+      }
+    });
+  };
+
+  // トラックの再生開始
   const handleRestart = () => {
     // すべてのトラックを最初から再生
     Object.values(audioRefs.current).forEach(audio => {
@@ -53,9 +136,11 @@ export default function StemPlayer({ tracks, defaultActiveTrack = ['drums'] }: S
         audio.currentTime = 0;
       }
     });
+    setTrackProgress(0);
     setIsPlaying(true);
   };
 
+  // トラックの有効/無効を切り替え
   const toggleTrack = (trackId: string) => {
     if (activeTrackIds.includes(trackId)) {
       setActiveTrackIds(activeTrackIds.filter(id => id !== trackId));
@@ -64,8 +149,17 @@ export default function StemPlayer({ tracks, defaultActiveTrack = ['drums'] }: S
     }
   };
 
+  // 再生終了時の処理
   const handleAudioEnded = () => {
     setIsPlaying(false);
+    setTrackProgress(0);
+  };
+
+  // 時間のフォーマット (秒を「分:秒」形式に)
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -80,6 +174,7 @@ export default function StemPlayer({ tracks, defaultActiveTrack = ['drums'] }: S
           src={track.url}
           data-track-id={track.name}
           onEnded={handleAudioEnded}
+          crossOrigin="anonymous"
         />
       ))}
       
@@ -116,6 +211,23 @@ export default function StemPlayer({ tracks, defaultActiveTrack = ['drums'] }: S
           </svg>
           最初から
         </button>
+      </div>
+      
+      {/* プログレスバー */}
+      <div className="mb-4">
+        <div className="flex items-center mb-1">
+          <span className="text-sm text-gray-500 mr-2">{formatTime(trackProgress)}</span>
+          <input
+            type="range"
+            min="0"
+            max={duration || 100}
+            step="0.01"
+            value={trackProgress}
+            onChange={handleSeek}
+            className="w-full accent-blue-500"
+          />
+          <span className="text-sm text-gray-500 ml-2">{formatTime(duration)}</span>
+        </div>
       </div>
       
       {/* トラックトグル */}

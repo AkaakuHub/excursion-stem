@@ -3,30 +3,28 @@ from flask_cors import CORS
 import os
 import uuid
 from werkzeug.utils import secure_filename
-import subprocess
-import time
-import json
-import librosa
-import soundfile as sf
+from services.audio_service import AudioService
+from config import Config
 
 app = Flask(__name__)
 CORS(app)
+app.config.from_object(Config)
 
-# 設定
-UPLOAD_FOLDER = 'uploads'
-OUTPUT_FOLDER = 'output'
-ALLOWED_EXTENSIONS = {'mp3', 'wav', 'ogg', 'flac'}
+# アップロードディレクトリの確保
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
-# フォルダが存在しない場合は作成
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+# サービスの初期化
+audio_service = AudioService()
 
 def allowed_file(filename):
+    """許可されたファイル拡張子かどうかをチェック"""
     return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
+    """音声ファイルをアップロードする"""
     if 'file' not in request.files:
         return jsonify({'error': 'ファイルがありません'}), 400
     
@@ -38,7 +36,7 @@ def upload_file():
         # 一意のファイル名を生成
         file_id = str(uuid.uuid4())
         filename = secure_filename(file.filename)
-        file_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_{filename}")
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
         file.save(file_path)
         
         return jsonify({
@@ -46,20 +44,24 @@ def upload_file():
             'fileId': file_id,
             'filename': filename,
             'path': file_path
-        })
+        }), 200
     
     return jsonify({'error': '許可されていないファイル形式です'}), 400
 
 @app.route('/api/process', methods=['POST'])
 def process_audio():
+    """音声ファイルを処理して分離する"""
     try:
         # フォームデータからファイルと範囲を取得
+        if 'file' not in request.files:
+            return jsonify({'error': 'ファイルがありません'}), 400
+            
         file = request.files['file']
         start_time = float(request.form.get('startTime', 0))
         end_time = float(request.form.get('endTime', 30))
         
-        if not file:
-            return jsonify({'error': 'ファイルがありません'}), 400
+        if file.filename == '':
+            return jsonify({'error': 'ファイルが選択されていません'}), 400
         
         if not allowed_file(file.filename):
             return jsonify({'error': '許可されていないファイル形式です'}), 400
@@ -67,79 +69,82 @@ def process_audio():
         # アップロード処理
         file_id = str(uuid.uuid4())
         filename = secure_filename(file.filename)
-        file_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_{filename}")
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
         file.save(file_path)
         
-        # 選択範囲の切り取り
-        segment_path = cut_audio_segment(file_path, start_time, end_time, file_id)
-        
-        # Demucsを使用して楽器パートを分離
-        stems = separate_audio(segment_path, file_id)
-        
+        # 音声処理サービスを使用して分離
+        separated_tracks = audio_service.process_audio_file(file_path, start_time, end_time)
+            
         # 各パートのURLを返す
         track_urls = {}
-        for stem_name, stem_path in stems.items():
-            # 相対パスからURLを生成
-            track_urls[stem_name] = f"/api/audio/{os.path.basename(stem_path)}"
+        for track_name, track_path in separated_tracks.items():
+            # ファイルパスをそのまま保存
+            track_urls[track_name] = f"/api/audio?path={track_path}"
         
         return jsonify({
             'status': 'success',
             'tracks': track_urls
-        })
-    
+        }), 200
+        
     except Exception as e:
+        app.logger.error(f"処理エラー: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-def cut_audio_segment(file_path, start_time, end_time, file_id):
-    """音声ファイルから指定した範囲を切り出す"""
-    y, sr = librosa.load(file_path, sr=None)
-    
-    # 時間をサンプル数に変換
-    start_sample = int(start_time * sr)
-    end_sample = int(end_time * sr)
-    
-    # 範囲を切り出す
-    segment = y[start_sample:end_sample]
-    
-    # 切り出した音声を保存
-    segment_path = os.path.join(OUTPUT_FOLDER, f"segment_{file_id}.wav")
-    sf.write(segment_path, segment, sr)
-    
-    return segment_path
+@app.route('/api/preview', methods=['POST'])
+def preview_audio():
+    """アップロードされた音声の特定範囲をプレビュー用に切り出す"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'ファイルがありません'}), 400
+            
+        file = request.files['file']
+        start_time = float(request.form.get('startTime', 0))
+        end_time = float(request.form.get('endTime', 30))
+        
+        # アップロード処理
+        file_id = str(uuid.uuid4())
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
+        file.save(file_path)
+        
+        # プレビュー用の切り抜き
+        preview_path = audio_service.get_preview(file_path, start_time, end_time)
+        
+        if preview_path:
+            preview_url = f"/api/audio/{os.path.basename(preview_path)}"
+            return jsonify({
+                'status': 'success',
+                'previewUrl': preview_url
+            }), 200
+        else:
+            return jsonify({'error': 'プレビューの生成に失敗しました'}), 500
+            
+    except Exception as e:
+        app.logger.error(f"プレビューエラー: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-def separate_audio(audio_path, file_id):
-    """Demucsを使用して音声を分離する"""
-    # Demucsコマンドを実行
-    output_path = os.path.join(OUTPUT_FOLDER, f"stems_{file_id}")
+# パラメータ使用方式に変更
+@app.route('/api/audio')
+def get_audio():
+    """音声ファイルを提供する（パス指定方式）"""
+    file_path = request.args.get('path')
     
-    # 実際の環境ではDemucsをインストールしてコマンドを実行
-    # ここではダミーの実装（実際のアプリでは下記のようなコマンドを実行）
-    # subprocess.run([
-    #     "demucs", 
-    #     "--out", output_path,
-    #     "--two-stems=vocals", 
-    #     audio_path
-    # ], check=True)
+    if not file_path:
+        return jsonify({'error': 'ファイルパスが指定されていません'}), 400
     
-    # デモ用：実際には分離処理が行われるが、ここではダミーファイルを生成
-    dummy_stems = {
-        'drums': os.path.join(OUTPUT_FOLDER, f"drums_{file_id}.wav"),
-        'bass': os.path.join(OUTPUT_FOLDER, f"bass_{file_id}.wav"),
-        'vocals': os.path.join(OUTPUT_FOLDER, f"vocals_{file_id}.wav"),
-        'other': os.path.join(OUTPUT_FOLDER, f"other_{file_id}.wav")
-    }
+    # ファイルパスからディレクトリとファイル名を分離
+    directory = os.path.dirname(file_path)
+    filename = os.path.basename(file_path)
     
-    # ダミーファイルの生成（実際のアプリではこの部分は不要）
-    y, sr = librosa.load(audio_path, sr=None)
-    for stem_name, stem_path in dummy_stems.items():
-        sf.write(stem_path, y, sr)  # 同じ音声をコピー（デモ用）
+    app.logger.info(f"音声ファイルへのアクセス: {directory}/{filename}")
     
-    return dummy_stems
+    return send_from_directory(directory, filename)
 
+# 後方互換性のために残しておく
 @app.route('/api/audio/<filename>')
-def get_audio(filename):
-    """音声ファイルを提供する"""
-    return send_from_directory(OUTPUT_FOLDER, filename)
+def get_audio_by_filename(filename):
+    """音声ファイルを提供する（ファイル名指定方式）"""
+    return send_from_directory(app.config['OUTPUT_FOLDER'], filename)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)

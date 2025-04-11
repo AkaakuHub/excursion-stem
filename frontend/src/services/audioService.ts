@@ -1,54 +1,74 @@
-// このファイルはフロントエンドのモックAPIを提供します
-// 実際のバックエンドと連携する場合は、適切なAPIエンドポイントにリクエストを送信してください
-
-// モックの応答時間（デモ用）
-const MOCK_PROCESSING_TIME = 3000; // 3秒
-
-export async function processAudio(file: File, startTime = 0, endTime = 30): Promise<any> {
-  // 実際の実装ではここでAPIにリクエストを送信します
-  // 以下はモックの実装です
-  
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // モック応答を生成
-      // NOTE: 実際のアプリケーションでは、バックエンドAPIからの応答を使用します
-      resolve({
-        success: true,
-        tracks: {
-          drums: createMockAudioUrl('drums'),
-          bass: createMockAudioUrl('bass'),
-          vocals: createMockAudioUrl('vocals'),
-          other: createMockAudioUrl('other')
-        }
-      });
-    }, MOCK_PROCESSING_TIME);
-  });
-}
-
-// モック用のオーディオURLを生成（デモ目的のみ）
-function createMockAudioUrl(instrument: string): string {
-  // 実際のアプリでは、この部分はバックエンドから提供されるURLに置き換えます
-  return `https://stem-samples.example.com/${instrument}.mp3`;
-}
-
-// 実際の実装では以下のような関数を使用してバックエンドと通信します
-/*
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-export async function processAudio(file: File, startTime = 0, endTime = 30) {
+/**
+ * 音声ファイルを処理してパートに分離する
+ */
+export async function processAudio(file: File, startTime = 0, endTime = 30): Promise<any> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('startTime', startTime.toString());
   formData.append('endTime', endTime.toString());
 
-  const response = await axios.post(`${API_URL}/process`, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  try {
+    const response = await axios.post(`${API_URL}/process`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
 
-  return response.data;
+    return response.data;
+  } catch (error) {
+    console.error('音声処理エラー:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      throw new Error(error.response.data.error || '音声処理中にエラーが発生しました');
+    }
+    throw new Error('サーバーとの通信に失敗しました');
+  }
 }
-*/
+
+/**
+ * 音声ファイルの特定範囲をプレビューする
+ */
+export async function getAudioPreview(file: File, startTime = 0, endTime = 30): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('startTime', startTime.toString());
+  formData.append('endTime', endTime.toString());
+
+  try {
+    const response = await axios.post(`${API_URL}/preview`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    // バックエンドから返されたプレビューURLを返す
+    return response.data.previewUrl;
+  } catch (error) {
+    console.error('プレビュー取得エラー:', error);
+    throw new Error('プレビューの生成に失敗しました');
+  }
+}
+
+/**
+ * 絶対URLを生成する (相対URLをフルURLに変換)
+ */
+export function getFullAudioUrl(relativeUrl: string): string {
+  const baseUrl = API_URL.split('/api')[0]; // APIベースURLからのパスを取得
+  return `${baseUrl}${relativeUrl}`; 
+}
+
+/**
+ * 複数のトラックURLを絶対URLに変換する
+ */
+export function getFullTrackUrls(tracks: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  
+  for (const [key, relativeUrl] of Object.entries(tracks)) {
+    result[key] = getFullAudioUrl(relativeUrl);
+  }
+  
+  return result;
+}
