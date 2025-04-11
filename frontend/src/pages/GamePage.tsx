@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import AudioUploader from "../components/AudioUploader";
 import AudioRangeSelector from "../components/AudioRangeSelector";
+import AudioUploader from "../components/AudioUploader";
 import StemPlayer from "../components/StemPlayer";
-import { processAudio, getAudioPreview } from "../services/audioService";
+import { getAudioPreview, processAudio } from "../services/audioService";
 
 export default function GamePage() {
 	const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -128,6 +128,7 @@ export default function GamePage() {
 
 					<div className="text-center">
 						<button
+							type="button"
 							onClick={handleProcessAudio}
 							disabled={isProcessing}
 							className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-8 rounded-lg shadow-lg text-xl transition-colors disabled:opacity-50"
@@ -140,7 +141,7 @@ export default function GamePage() {
 
 			{gameStatus === "process" && (
 				<div className="text-center py-12">
-					<div className="inline-block animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-600 mb-4"></div>
+					<div className="inline-block animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-600 mb-4" />
 					<p className="text-xl text-gray-700">音声を処理中です...</p>
 					<p className="text-sm text-gray-500 mt-2">
 						このプロセスには数分かかることがあります
@@ -159,6 +160,7 @@ export default function GamePage() {
 						</p>
 						<div className="flex space-x-4">
 							<button
+								type="button"
 								onClick={() => window.location.reload()}
 								className="bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors"
 							>

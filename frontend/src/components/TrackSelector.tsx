@@ -44,6 +44,7 @@ const TrackSelector: React.FC = () => {
 						Preview Range: {previewRange.start} - {previewRange.end} seconds
 					</p>
 					<button
+					type="button"
 						onClick={() =>
 							handlePreviewChange(previewRange.start - 5, previewRange.end)
 						}
@@ -51,13 +52,14 @@ const TrackSelector: React.FC = () => {
 						Preview Back
 					</button>
 					<button
+					type="button"
 						onClick={() =>
 							handlePreviewChange(previewRange.start + 5, previewRange.end)
 						}
 					>
 						Preview Forward
 					</button>
-					<button onClick={handleConvert}>Convert</button>
+					<button onClick={handleConvert} type="button">Convert</button>
 				</div>
 			)}
 		</div>

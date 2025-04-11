@@ -52,7 +52,7 @@ export default function AudioPlayer({ audioSrc }: AudioPlayerProps) {
 		const audio = audioRef.current;
 		if (!audio) return;
 
-		const newTime = parseFloat(e.target.value);
+		const newTime = Number.parseFloat(e.target.value);
 		audio.currentTime = newTime;
 		setCurrentTime(newTime);
 	};
@@ -63,6 +63,7 @@ export default function AudioPlayer({ audioSrc }: AudioPlayerProps) {
 
 			<div className="flex items-center space-x-4">
 				<button
+					type="button"
 					onClick={togglePlay}
 					className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-full"
 				>

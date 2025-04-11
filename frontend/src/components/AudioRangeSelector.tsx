@@ -151,7 +151,7 @@ export default function AudioRangeSelector({
 	};
 
 	const handleRangeEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const newEnd = parseFloat(e.target.value);
+		const newEnd = Number.parseFloat(e.target.value);
 		// 終了時間は開始時間より後に（最低5秒）
 		if (newEnd > rangeStart + 5 && newEnd <= duration) {
 			setRangeEnd(newEnd);
@@ -173,6 +173,7 @@ export default function AudioRangeSelector({
 			{/* 再生コントロール */}
 			<div className="flex items-center mb-6 space-x-4">
 				<button
+					type="button"
 					onClick={handlePlayPause}
 					disabled={isProcessing}
 					className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-full transition-colors flex items-center shadow-md disabled:opacity-50"
@@ -186,6 +187,7 @@ export default function AudioRangeSelector({
 								viewBox="0 0 24 24"
 								xmlns="http://www.w3.org/2000/svg"
 							>
+								<title>一時停止</title>
 								<path
 									strokeLinecap="round"
 									strokeLinejoin="round"
@@ -204,6 +206,7 @@ export default function AudioRangeSelector({
 								viewBox="0 0 24 24"
 								xmlns="http://www.w3.org/2000/svg"
 							>
+								<title>再生</title>
 								<path
 									strokeLinecap="round"
 									strokeLinejoin="round"
@@ -223,6 +226,7 @@ export default function AudioRangeSelector({
 				</button>
 
 				<button
+					type="button"
 					onClick={handleRangePreview}
 					disabled={isProcessing}
 					className="bg-indigo-500 hover:bg-indigo-600 text-white py-2 px-4 rounded-full transition-colors flex items-center shadow-md disabled:opacity-50"
@@ -236,6 +240,7 @@ export default function AudioRangeSelector({
 								viewBox="0 0 24 24"
 								xmlns="http://www.w3.org/2000/svg"
 							>
+								<title>処理中</title>
 								<path
 									strokeLinecap="round"
 									strokeLinejoin="round"
@@ -254,6 +259,7 @@ export default function AudioRangeSelector({
 								viewBox="0 0 24 24"
 								xmlns="http://www.w3.org/2000/svg"
 							>
+								<title>選択範囲プレビュー</title>
 								<path
 									strokeLinecap="round"
 									strokeLinejoin="round"
@@ -281,26 +287,29 @@ export default function AudioRangeSelector({
 						width: `${(rangeEnd / duration) * 100}%`,
 						left: `${(rangeStart / duration) * 100}%`,
 					}}
-				></div>
+				/>
 				<div
 					className="absolute top-0 h-full bg-blue-500 opacity-30"
 					style={{
 						width: `${((rangeEnd - rangeStart) / duration) * 100}%`,
 						left: `${(rangeStart / duration) * 100}%`,
 					}}
-				></div>
+				/>
 				<div
 					className="absolute top-0 h-full w-0.5 bg-red-500"
 					style={{
 						left: `${(currentTime / duration) * 100}%`,
 					}}
-				></div>
+				/>
 			</div>
 
 			{/* 範囲選択スライダー */}
 			<div className="space-y-6">
 				<div>
-					<label className="block text-sm font-medium text-gray-700 mb-1">
+					<label
+						className="block text-sm font-medium text-gray-700 mb-1"
+						htmlFor="rangeStart"
+					>
 						開始位置: {formatTime(rangeStart)}
 					</label>
 					<input
@@ -315,7 +324,10 @@ export default function AudioRangeSelector({
 				</div>
 
 				<div>
-					<label className="block text-sm font-medium text-gray-700 mb-1">
+					<label
+						className="block text-sm font-medium text-gray-700 mb-1"
+						htmlFor="rangeEnd"
+					>
 						終了位置: {formatTime(rangeEnd)}
 					</label>
 					<input

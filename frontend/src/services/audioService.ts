@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_URL =  "http://localhost:5000/api";
 
 /**
  * 音声ファイルを処理してパートに分離する
@@ -9,7 +9,7 @@ export async function processAudio(
 	file: File,
 	startTime = 0,
 	endTime = 30,
-): Promise<any> {
+): Promise<string[]> {
 	const formData = new FormData();
 	formData.append("file", file);
 	formData.append("startTime", startTime.toString());
