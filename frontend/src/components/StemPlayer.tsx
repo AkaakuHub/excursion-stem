@@ -6,6 +6,8 @@ type Track = {
 	url: string;
 	label: string;
 	color: string;
+	variant?: string; // バリアントの種類（通常/高い等）
+	group?: string; // グループ化するための識別子
 };
 
 type StemPlayerProps = {
@@ -24,6 +26,7 @@ export default function StemPlayer({
 	const [duration, setDuration] = useState(0);
 	const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
 	const animationRef = useRef<number | null>(null);
+	const [bassVariant, setBassVariant] = useState<"normal" | "high">("normal");
 
 	// 相対URLを絶対URLに変換
 	const fullUrlTracks = getFullTrackUrls(tracks);
@@ -37,10 +40,15 @@ export default function StemPlayer({
 			color: "bg-red-500",
 		},
 		{
-			name: "bass",
-			url: fullUrlTracks.bass || "",
-			label: "ベース",
+			name: bassVariant === "normal" ? "bass" : "high_bass",
+			url:
+				bassVariant === "normal"
+					? fullUrlTracks.bass || ""
+					: fullUrlTracks.high_bass || "",
+			label: bassVariant === "normal" ? "ベース" : "ベース（高）",
 			color: "bg-blue-500",
+			group: "bass",
+			variant: bassVariant,
 		},
 		{
 			name: "vocals",
@@ -55,6 +63,25 @@ export default function StemPlayer({
 			color: "bg-purple-500",
 		},
 	].filter((track) => track.url);
+
+	// ベースのバリアント切り替え処理
+	const toggleBassVariant = () => {
+		const newVariant = bassVariant === "normal" ? "high" : "normal";
+		setBassVariant(newVariant);
+
+		// アクティブなトラックも切り替える
+		if (
+			activeTrackIds.includes("bass") ||
+			activeTrackIds.includes("high_bass")
+		) {
+			setActiveTrackIds((prev) => {
+				const withoutBass = prev.filter(
+					(id) => id !== "bass" && id !== "high_bass",
+				);
+				return [...withoutBass, newVariant === "normal" ? "bass" : "high_bass"];
+			});
+		}
+	};
 
 	// トラックのロード時にデュレーションを設定
 	useEffect(() => {
@@ -167,15 +194,6 @@ export default function StemPlayer({
 		setIsPlaying(true);
 	};
 
-	// トラックの有効/無効を切り替え
-	const toggleTrack = (trackId: string) => {
-		if (activeTrackIds.includes(trackId)) {
-			setActiveTrackIds(activeTrackIds.filter((id) => id !== trackId));
-		} else {
-			setActiveTrackIds([...activeTrackIds, trackId]);
-		}
-	};
-
 	// 再生終了時の処理
 	const handleAudioEnded = () => {
 		setIsPlaying(false);
@@ -189,21 +207,76 @@ export default function StemPlayer({
 		return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 	};
 
+	// トラックの有効/無効を切り替え
+	const toggleTrack = (trackId: string) => {
+		const track = trackData.find((t) => t.name === trackId);
+
+		// ベースグループのトラックを特別扱い
+		if (track?.group === "bass") {
+			if (activeTrackIds.includes(trackId)) {
+				// ベースを無効化
+				setActiveTrackIds(
+					activeTrackIds.filter((id) => id !== "bass" && id !== "high_bass"),
+				);
+			} else {
+				// 現在のバリアントに基づいてベースを有効化
+				const bassId = bassVariant === "normal" ? "bass" : "high_bass";
+				const otherTrackIds = activeTrackIds.filter(
+					(id) => id !== "bass" && id !== "high_bass",
+				);
+				setActiveTrackIds([...otherTrackIds, bassId]);
+			}
+		} else {
+			// 通常のトラック切り替え処理
+			if (activeTrackIds.includes(trackId)) {
+				setActiveTrackIds(activeTrackIds.filter((id) => id !== trackId));
+			} else {
+				setActiveTrackIds([...activeTrackIds, trackId]);
+			}
+		}
+	};
+
 	return (
 		<div className="stem-player bg-white p-6 rounded-xl shadow-md">
 			<h2 className="text-xl font-semibold mb-4">パート別プレイヤー</h2>
 
 			{/* 音声要素（非表示） */}
-			{trackData.map((track) => (
-				<audio
-					key={track.name}
-					ref={(el) => (audioRefs.current[track.name] = el)}
-					src={track.url}
-					data-track-id={track.name}
-					onEnded={handleAudioEnded}
-					crossOrigin="anonymous"
-				/>
-			))}
+			{/* すべてのオーディオ要素を常に含める */}
+			<audio
+				ref={(el) => (audioRefs.current["drums"] = el)}
+				src={fullUrlTracks.drums || ""}
+				data-track-id="drums"
+				onEnded={handleAudioEnded}
+				crossOrigin="anonymous"
+			/>
+			<audio
+				ref={(el) => (audioRefs.current["bass"] = el)}
+				src={fullUrlTracks.bass || ""}
+				data-track-id="bass"
+				onEnded={handleAudioEnded}
+				crossOrigin="anonymous"
+			/>
+			<audio
+				ref={(el) => (audioRefs.current["high_bass"] = el)}
+				src={fullUrlTracks.high_bass || ""}
+				data-track-id="high_bass"
+				onEnded={handleAudioEnded}
+				crossOrigin="anonymous"
+			/>
+			<audio
+				ref={(el) => (audioRefs.current["vocals"] = el)}
+				src={fullUrlTracks.vocals || ""}
+				data-track-id="vocals"
+				onEnded={handleAudioEnded}
+				crossOrigin="anonymous"
+			/>
+			<audio
+				ref={(el) => (audioRefs.current["other"] = el)}
+				src={fullUrlTracks.other || ""}
+				data-track-id="other"
+				onEnded={handleAudioEnded}
+				crossOrigin="anonymous"
+			/>
 
 			{/* 再生コントロール */}
 			<div className="flex space-x-4 mb-6">
@@ -306,11 +379,11 @@ export default function StemPlayer({
 						key={track.name}
 						onClick={() => toggleTrack(track.name)}
 						className={`py-3 px-4 rounded-lg text-white font-medium transition-all flex items-center justify-center disabled:brightness-75 cursor-pointer disabled:cursor-not-allowed
-							${
-								activeTrackIds.includes(track.name)
-									? `${track.color} shadow-md`
-									: "bg-gray-300 hover:bg-gray-400"
-							}`}
+                            ${
+															activeTrackIds.includes(track.name)
+																? `${track.color} shadow-md`
+																: "bg-gray-300 hover:bg-gray-400"
+														}`}
 						disabled={isPlaying}
 					>
 						{activeTrackIds.includes(track.name) ? (
@@ -348,6 +421,35 @@ export default function StemPlayer({
 					</button>
 				))}
 			</div>
+
+			{/* ベースバリアント切り替えボタン */}
+			{fullUrlTracks.bass && fullUrlTracks.high_bass && (
+				<div className="mt-4">
+					<button
+						onClick={toggleBassVariant}
+						className="bg-blue-100 hover:bg-blue-200 text-blue-800 py-2 px-4 rounded-lg border border-blue-300 transition-colors flex items-center mx-auto"
+						disabled={isPlaying}
+					>
+						<svg
+							className="w-5 h-5 mr-2"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+							xmlns="http://www.w3.org/2000/svg"
+						>
+							<path
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								strokeWidth={2}
+								d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+							/>
+						</svg>
+						{bassVariant === "normal"
+							? "ベースを1オクターブ上げる"
+							: "通常のベースに戻す"}
+					</button>
+				</div>
+			)}
 		</div>
 	);
 }

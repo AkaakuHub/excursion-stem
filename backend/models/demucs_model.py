@@ -4,6 +4,7 @@ import glob
 import logging
 from typing import Dict
 from flask import current_app
+from utils.audio_processing import pitch_shift_audio
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,18 @@ class DemucsModel:
                         logger.info(
                             f"{instrument}パートを代替パターンで発見: {alt_files[0]}"
                         )
+
+            # ベースパートが見つかった場合は1オクターブ高いバージョンも作成
+            if "bass" in tracks:
+                bass_path = tracks["bass"]
+                bass_dir = os.path.dirname(bass_path)
+                bass_file = os.path.basename(bass_path)
+                high_bass_path = os.path.join(bass_dir, "high_" + bass_file)
+
+                # 1オクターブ（12半音）高いバージョンを作成
+                pitch_shift_audio(bass_path, high_bass_path, 12)
+                tracks["high_bass"] = high_bass_path
+                logger.info(f"高いベースパートを作成: {high_bass_path}")
 
             if not tracks:
                 raise FileNotFoundError(
