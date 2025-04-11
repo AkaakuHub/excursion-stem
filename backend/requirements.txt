@@ -1,0 +1,7 @@
+Flask
+demucs
+numpy
+scipy
+pydub
+requests
+flask-cors
